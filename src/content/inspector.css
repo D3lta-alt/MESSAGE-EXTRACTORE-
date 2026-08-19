@@ -1,0 +1,3 @@
+/* Reserved for the Element Inspector overlay. Currently unused — inspector.ts
+   styles its overlay via inline styles — but declared as a web-accessible
+   resource in manifest.json, so this file must exist for the build to pass. */
