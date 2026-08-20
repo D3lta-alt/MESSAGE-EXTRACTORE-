@@ -3,21 +3,28 @@ import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { InspectorPanel } from '../popup/components/InspectorPanel';
 import type { ScrollSettings } from '../core/extractor';
+import { storageKeyFor } from '../core/platform-key';
 
 interface StoredSettings {
-  userSelectors?: Record<string, string>;
+  userSelectorsByPlatform?: Record<string, Record<string, string>>;
   scrollSettings?: Partial<ScrollSettings>;
 }
 
+const CONFIGURABLE_PLATFORMS = ['Telegram Web', 'Messenger', 'Discord', 'Instagram', 'Generic DOM'];
+
 function Options() {
-  const [selectors, setSelectors] = useState<Record<string, string>>({});
+  // Keyed by storageKeyFor(platformName) — see BUG-016. Each platform's
+  // selectors are edited/saved independently so a fix for one platform can
+  // never silently bleed into another.
+  const [selectorsByPlatform, setSelectorsByPlatform] = useState<Record<string, Record<string, string>>>({});
+  const [editingPlatform, setEditingPlatform] = useState<string>(CONFIGURABLE_PLATFORMS[0]);
   const [scrollDelay, setScrollDelay] = useState<number>(2000);
   const [settleDelay, setSettleDelay] = useState<number>(500);
 
   useEffect(() => {
     // Load saved settings
-    chrome.storage.local.get<StoredSettings>(['userSelectors', 'scrollSettings'], (result) => {
-      if (result.userSelectors) setSelectors(result.userSelectors);
+    chrome.storage.local.get<StoredSettings>(['userSelectorsByPlatform', 'scrollSettings'], (result) => {
+      if (result.userSelectorsByPlatform) setSelectorsByPlatform(result.userSelectorsByPlatform);
       if (result.scrollSettings) {
         setScrollDelay(result.scrollSettings.scrollDelayMs || 2000);
         setSettleDelay(result.scrollSettings.settleDelayMs || 500);
@@ -27,13 +34,19 @@ function Options() {
 
   const save = () => {
     chrome.storage.local.set({
-      userSelectors: selectors,
+      userSelectorsByPlatform: selectorsByPlatform,
       scrollSettings: { scrollDelayMs: scrollDelay, settleDelayMs: settleDelay },
     });
   };
 
-  const updateSelector = (key: string, value: string) => {
-    setSelectors((prev) => ({ ...prev, [key]: value }));
+  const currentKey = storageKeyFor(editingPlatform);
+  const currentSelectors = selectorsByPlatform[currentKey] || {};
+
+  const updateSelector = (field: string, value: string) => {
+    setSelectorsByPlatform((prev) => ({
+      ...prev,
+      [currentKey]: { ...prev[currentKey], [field]: value },
+    }));
   };
 
   return (
@@ -42,15 +55,37 @@ function Options() {
 
       <h2>Element Inspector</h2>
       <p style={{ fontSize: '0.9rem', color: '#64748b' }}>
-        Click a target below, then click the matching element on the chat page. The
-        derived selector fills in the field beneath — remember to Save when you're done.
+        Open the chat platform you want to fix in another tab, then click a target
+        below and click the matching element on that page. The picked selectors are
+        saved for whichever platform is detected in that tab — they won't affect any
+        other platform.
       </p>
-      <InspectorPanel onSelectorsChange={(cfg) => setSelectors((prev) => ({ ...prev, ...cfg }))} />
+      <InspectorPanel
+        onSelectorsChange={(cfg, platform) => {
+          const key = storageKeyFor(platform);
+          setSelectorsByPlatform((prev) => ({ ...prev, [key]: { ...prev[key], ...cfg } }));
+          setEditingPlatform(platform);
+        }}
+      />
 
-      <h2>Default Selectors (Generic Adapter)</h2>
+      <h2>Manual Selectors</h2>
       <p style={{ fontSize: '0.9rem', color: '#64748b' }}>
-        These selectors are used as fallback for the generic DOM adapter and can be manually configured per platform.
+        Selectors are stored separately per platform. Pick which platform you're
+        editing below — "Generic DOM" is the fallback used for any unrecognized page.
       </p>
+
+      <div style={{ marginBottom: '1rem' }}>
+        <label style={{ display: 'block', fontWeight: 600, marginBottom: '0.25rem' }}>Platform:</label>
+        <select
+          value={editingPlatform}
+          onChange={(e) => setEditingPlatform(e.target.value)}
+          style={{ width: '100%', padding: '0.5rem' }}
+        >
+          {CONFIGURABLE_PLATFORMS.map((p) => (
+            <option key={p} value={p}>{p}</option>
+          ))}
+        </select>
+      </div>
 
       {['container', 'sender', 'text', 'timestamp', 'attachment'].map((key) => (
         <div key={key} style={{ marginBottom: '1rem' }}>
@@ -59,7 +94,7 @@ function Options() {
           </label>
           <input
             type="text"
-            value={selectors[key] || ''}
+            value={currentSelectors[key] || ''}
             onChange={(e) => updateSelector(key, e.target.value)}
             style={{ width: '100%', padding: '0.5rem' }}
           />

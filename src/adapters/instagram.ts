@@ -5,45 +5,47 @@ import { AttachmentManager } from '../core/attachment-manager';
 import { getElementDomPath } from '../content/dom-utils';
 
 /**
- * Messenger's message list is an ARIA grid (Meta's shared accessible-list
- * component): a `div[role="grid"]` containing one `div[role="row"]` per message,
- * each wrapping a `div[role="gridcell"]`. Two accessibility-only headings carry
- * the metadata a screen reader needs but the eye doesn't: an <h4> announcing who
- * sent it ("You sent" / "Jane Doe sent") and an <h2> announcing when. These are
- * real semantic tags rather than styling classes, so — unlike Messenger's
- * auto-generated CSS class names, which rotate — they're a stable target.
+ * ⚠️ Best-effort adapter — unlike the other adapters in this file, this one
+ * has NOT been verified against a live, logged-in Instagram DM thread (that
+ * requires an authenticated session this environment doesn't have). It's
+ * written on the working hypothesis that Instagram Direct, also a Meta
+ * product, reuses the same accessible ARIA-grid message-list component as
+ * Messenger (`[role="grid"]` > `[role="row"]` > `[role="gridcell"]`, with
+ * screen-reader-only <h4>/<h2> headings for sender/timestamp — see
+ * messenger.ts for the reasoning).
  *
- * This was previously an unimplemented stub that fell through to
- * GenericAdapter's generic `li, article, [role="listitem"]` selector, which
- * matches the chat-info side panel's menu items just as readily as an actual
- * message, and is why extraction returned rows like "Media, files and links"
- * and "Chat Info" instead of real messages.
- *
- * If this ever drifts out of sync with Messenger's live markup, the extension's
- * built-in Inspector Mode (Options page) lets you click the real elements and
- * override any of these selectors without needing a code change.
+ * Platform DETECTION (hostname + path) is solid and won't need adjusting.
+ * The DOM-shape assumptions below might not be — if a real extraction run
+ * comes back with 0 messages, use Inspector Mode (Options page → Element
+ * Inspector) to click the real container/sender/text/timestamp elements on
+ * the page; your picks override every selector here immediately, no rebuild
+ * needed.
  */
-export class MessengerAdapter implements PlatformAdapter {
-  platformName = 'Messenger';
+export class InstagramAdapter implements PlatformAdapter {
+  platformName = 'Instagram';
 
   constructor(private overrides: Record<string, string> = {}) {}
 
   detectPlatform(): boolean {
-    const host = location.hostname;
-    if (/(^|\.)messenger\.com$/.test(host)) return true;
-    if (/(^|\.)facebook\.com$/.test(host) && /^\/messages\b/.test(location.pathname)) return true;
-    return false;
+    return /(^|\.)instagram\.com$/.test(location.hostname) && /^\/direct\//.test(location.pathname);
   }
 
   findConversation(): string {
     const grid = this.getGrid();
     const label = grid?.getAttribute('aria-label') || '';
     const match = label.match(/conversation with (.+)$/i);
-    return match?.[1]?.trim() || document.title || 'Unknown conversation';
+    if (match?.[1]) return match[1].trim();
+
+    // Fallback: Instagram DM thread headers commonly show the other person's
+    // username/name near the top of the thread panel.
+    const heading = document.querySelector('div[role="main"] header h1, div[role="main"] header span');
+    return normalizeText(heading?.textContent) || document.title || 'Unknown conversation';
   }
 
   findConversationId(): string | null {
-    return location.pathname.split('/').filter(Boolean).pop() || null;
+    // /direct/t/<thread-id>/
+    const match = location.pathname.match(/\/direct\/t\/([^/]+)/);
+    return match?.[1] || null;
   }
 
   private getGrid(): HTMLElement | null {
@@ -56,9 +58,9 @@ export class MessengerAdapter implements PlatformAdapter {
     }
     const grid = this.getGrid();
     if (!grid) return [];
-    // Intentionally NOT falling back to a generic list/item selector here —
-    // that's exactly the bug this adapter replaces. If the grid isn't found,
-    // returning nothing (rather than guessing) is the correct failure mode.
+    // Deliberately fails closed (returns nothing) rather than falling back to
+    // a generic list-item selector if the grid isn't found — see messenger.ts
+    // for why that fallback is actively harmful rather than just imprecise.
     return Array.from(grid.querySelectorAll<HTMLElement>('[role="row"]'));
   }
 
@@ -116,8 +118,6 @@ export class MessengerAdapter implements PlatformAdapter {
     if (this.overrides.text) {
       return normalizeText(scope.querySelector(this.overrides.text)?.textContent);
     }
-    // Strip the sender/timestamp headings so their (often screen-reader-only)
-    // text doesn't leak into the message body, then read what's left.
     const clone = scope.cloneNode(true) as HTMLElement;
     clone.querySelectorAll('h2, h4').forEach((n) => n.remove());
     return normalizeText(clone.textContent);
@@ -147,10 +147,10 @@ export class MessengerAdapter implements PlatformAdapter {
 
   getUserSelectors(): Record<string, string> {
     return {
-      container: this.overrides.container || '[role="grid"] [role="row"]',
-      sender: this.overrides.sender || 'h4 (parsed, strips trailing "sent")',
-      text: this.overrides.text || '(gridcell content, minus h2/h4 headings)',
-      timestamp: this.overrides.timestamp || 'h2',
+      container: this.overrides.container || '[role="grid"] [role="row"] (unverified — confirm live)',
+      sender: this.overrides.sender || 'h4 (unverified — confirm live)',
+      text: this.overrides.text || '(gridcell content, minus h2/h4 headings — unverified)',
+      timestamp: this.overrides.timestamp || 'h2 (unverified — confirm live)',
       attachment: this.overrides.attachment || 'img[src], video, audio, a[href]'
     };
   }

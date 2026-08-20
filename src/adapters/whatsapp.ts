@@ -40,11 +40,27 @@ export class WhatsAppAdapter implements PlatformAdapter {
     const textEl = el.querySelector('[data-testid="msg-text"], .selectable-text');
     const text = normalizeText(textEl?.textContent);
 
-    const senderEl = el.querySelector('[data-testid="msg-meta"] span');
-    const sender = normalizeText(senderEl?.textContent) || null;
+    // WhatsApp Web stamps every bubble with data-pre-plain-text, formatted like
+    // "[10:15 AM, 1/1/2026] Jane Doe: " — it's what powers WA's own "copy message"
+    // feature, so it's far more stable than the visible meta spans/time elements,
+    // which are unlabeled and get restructured across WA's frequent UI updates.
+    const metaEl = el.querySelector('[data-pre-plain-text]');
+    const rawMeta = metaEl?.getAttribute('data-pre-plain-text') || '';
+    const metaMatch = rawMeta.match(/^\[(.+?)\]\s*(.*?):\s*$/);
 
-    const timeEl = el.querySelector('[data-testid="msg-meta"] time, .copyable-text time');
-    const timestamp = timeEl?.getAttribute('datetime') || normalizeText(timeEl?.textContent) || null;
+    let sender = metaMatch?.[2]?.trim() || null;
+    let timestamp = metaMatch?.[1]?.trim() || null;
+
+    // Fall back to the visible meta elements if the attribute is missing or
+    // didn't match the expected format (e.g. a locale that formats it differently).
+    if (!timestamp) {
+      const timeEl = el.querySelector('[data-testid="msg-meta"] time, .copyable-text time');
+      timestamp = timeEl?.getAttribute('datetime') || normalizeText(timeEl?.textContent) || null;
+    }
+    if (!sender) {
+      const senderEl = el.querySelector('[data-testid="msg-meta"] [aria-label], [data-testid="author"]');
+      sender = normalizeText(senderEl?.textContent) || null;
+    }
 
     const attachments = this.extractAttachments(el);
 
@@ -101,9 +117,9 @@ export class WhatsAppAdapter implements PlatformAdapter {
   getUserSelectors(): Record<string, string> {
     return {
       container: '[data-testid="conversation-panel-messages"] [data-testid="msg-container"]',
-      sender: '[data-testid="msg-meta"] span',
+      sender: '[data-pre-plain-text] (parsed) — falls back to [data-testid="msg-meta"] [aria-label]',
       text: '[data-testid="msg-text"], .selectable-text',
-      timestamp: '[data-testid="msg-meta"] time',
+      timestamp: '[data-pre-plain-text] (parsed) — falls back to [data-testid="msg-meta"] time',
       attachment: 'img, video, audio, a[href]'
     };
   }

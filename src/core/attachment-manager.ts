@@ -24,6 +24,23 @@ export class AttachmentManager {
     return null;
   }
 
+  /**
+   * Heuristically flags small, roughly-square <img> elements as profile-picture
+   * avatars rather than shared media, using rendered size instead of class names
+   * (which are auto-generated/obfuscated on platforms like Messenger and Instagram
+   * and can't be relied on). Only filters when the element is actually laid out;
+   * an unmeasured element (width/height 0, e.g. lazy-loaded off-screen) is left in
+   * rather than guessed at.
+   */
+  static isLikelyAvatar(el: Element): boolean {
+    if (el.tagName.toLowerCase() !== 'img') return false;
+    const rect = el.getBoundingClientRect();
+    if (!rect.width || !rect.height) return false;
+    const isSmall = rect.width <= 56 && rect.height <= 56;
+    const isSquarish = Math.abs(rect.width - rect.height) <= 4;
+    return isSmall && isSquarish;
+  }
+
   static extractFromElement(el: Element): Attachment | null {
     const type = this.detectAttachmentType(el);
     if (!type) return null;

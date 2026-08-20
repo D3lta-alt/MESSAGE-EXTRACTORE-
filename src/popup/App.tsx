@@ -92,6 +92,7 @@ export default function App() {
             <option>Telegram Web</option>
             <option>Messenger</option>
             <option>Discord</option>
+            <option>Instagram</option>
           </select>
 
           <h2 className="font-medium mt-4 mb-2">Conversation</h2>

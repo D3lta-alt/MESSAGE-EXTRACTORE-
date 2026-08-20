@@ -3,10 +3,12 @@ import { WhatsAppAdapter } from '../adapters/whatsapp';
 import { TelegramAdapter } from '../adapters/telegram';
 import { MessengerAdapter } from '../adapters/messenger';
 import { DiscordAdapter } from '../adapters/discord';
+import { InstagramAdapter } from '../adapters/instagram';
 import { GenericAdapter } from '../adapters/generic';
 import { Extractor, ScrollSettings } from '../core/extractor';
 import { ChatMessage } from '../types/message';
 import { ElementInspector } from './inspector';
+import { storageKeyFor } from '../core/platform-key';
 
 let extractor: Extractor | null = null;
 let currentConversationId: string | null = null;
@@ -56,7 +58,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         }
         case 'STOP_INSPECTOR': {
           inspector?.stop();
-          sendResponse({ config: inspector?.getConfig() });
+          const adapter = await detectAdapter();
+          sendResponse({ config: inspector?.getConfig(), platform: adapter.platformName });
           break;
         }
         default:
@@ -79,18 +82,24 @@ async function sendMessagesToBackground(messages: ChatMessage[]): Promise<void> 
 }
 
 async function detectAdapter(): Promise<PlatformAdapter> {
-  const { userSelectors } = await chrome.storage.local.get<{ userSelectors?: Record<string, string> }>('userSelectors');
+  const { userSelectorsByPlatform } = await chrome.storage.local.get<{
+    userSelectorsByPlatform?: Record<string, Record<string, string>>;
+  }>('userSelectorsByPlatform');
+  const byPlatform = userSelectorsByPlatform || {};
+  const overridesFor = (platformName: string) => byPlatform[storageKeyFor(platformName)] || {};
+
   const adapters: PlatformAdapter[] = [
     new WhatsAppAdapter(),
-    new TelegramAdapter(userSelectors),
-    new MessengerAdapter(userSelectors),
-    new DiscordAdapter(userSelectors),
-    new GenericAdapter(userSelectors)
+    new TelegramAdapter(overridesFor('Telegram Web')),
+    new MessengerAdapter(overridesFor('Messenger')),
+    new DiscordAdapter(overridesFor('Discord')),
+    new InstagramAdapter(overridesFor('Instagram')),
+    new GenericAdapter(overridesFor('Generic DOM'))
   ];
   for (const adapter of adapters) {
     if (adapter.detectPlatform()) return adapter;
   }
-  return new GenericAdapter(userSelectors);
+  return new GenericAdapter(overridesFor('Generic DOM'));
 }
 
 /** Returns the current Extractor, resetting its dedup/progress state whenever
