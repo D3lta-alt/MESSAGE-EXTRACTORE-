@@ -1,0 +1,60 @@
+{
+  "manifest_version": 3,
+  "name": "Chat Extractor",
+  "version": "1.0.0",
+  "description": "Extract, organize, preview, and export chats and attachments from web messaging apps — locally and privately.",
+  "minimum_chrome_version": "116",
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "https://web.whatsapp.com/*",
+    "https://web.telegram.org/*",
+    "https://www.messenger.com/*",
+    "https://discord.com/*",
+    "https://*.discord.com/*"
+  ],
+  "optional_host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
+  "background": {
+    "service_worker": "service-worker-loader.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "js": [
+        "assets/content-script.ts-loader-bHahvjlX.js"
+      ],
+      "matches": [
+        "https://web.whatsapp.com/*",
+        "https://web.telegram.org/*",
+        "https://www.messenger.com/*",
+        "https://discord.com/*"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Chat Extractor"
+  },
+  "options_page": "src/options/options.html",
+  "web_accessible_resources": [
+    {
+      "matches": [
+        "https://discord.com/*",
+        "https://web.telegram.org/*",
+        "https://web.whatsapp.com/*",
+        "https://www.messenger.com/*"
+      ],
+      "resources": [
+        "src/content/inspector.css",
+        "assets/platform-key-DdabSb-Y.js",
+        "assets/content-script.ts-CMP9qFcJ.js"
+      ],
+      "use_dynamic_url": false
+    }
+  ]
+}
