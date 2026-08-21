@@ -1,0 +1,9 @@
+/* Minimal reset for the popup. Intentionally empty beyond this — the UI is
+   styled with inline styles / Tailwind utility classes elsewhere. */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
